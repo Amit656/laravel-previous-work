@@ -1,0 +1,77 @@
+image: stallionexp/stallion:php81-ci
+
+stages:
+  - build
+  - test
+  - deploy
+
+composer:
+  stage: build
+  tags:
+    - docker-runner
+  cache:
+    key: ${CI_COMMIT_REF_SLUG}-composer
+    paths:
+      - vendor/
+  script:
+    - composer install --prefer-dist --no-ansi --no-interaction --no-progress
+  artifacts:
+    expire_in: 7 days
+    paths:
+      - vendor/
+      - .env
+  rules:
+    - if: $CI_COMMIT_BRANCH == 'main'   
+    - if: $CI_COMMIT_BRANCH == 'develop'   
+    - if: $CI_MERGE_REQUEST_ID 
+
+phpcs:
+  stage: test
+  tags:
+    - docker-runner
+  dependencies:
+    - composer
+  script:
+    - ./vendor/bin/phpcs
+  artifacts:
+    paths:
+      - ./storage/logs # for debugging
+    expire_in: 7 days
+    when: always
+  rules:
+    - if: $CI_COMMIT_BRANCH == 'develop'   
+    - if: $CI_MERGE_REQUEST_ID 
+
+phpunit:
+  stage: test
+  tags:
+    - docker-runner
+  dependencies:
+    - composer
+  services:
+    - name: mysql:8.0.30
+      command: ['mysqld', '--character-set-server=utf8mb4', '--collation-server=utf8mb4_unicode_ci', "--default-authentication-plugin=mysql_native_password"]
+  variables:
+    MYSQL_ROOT_PASSWORD: root
+    MYSQL_DATABASE: testing
+    DB_HOST: mysql
+
+  script:
+    - php artisan migrate --seed
+    - ./vendor/bin/phpunit --log-junit report.xml
+  artifacts:
+    reports:
+      junit: report.xml
+    paths:
+      - ./storage/logs # for debugging
+    expire_in: 7 days   
+    when: always     
+  allow_failure: false
+  rules:
+    - if: $CI_COMMIT_BRANCH == 'develop'   
+    - if: $CI_MERGE_REQUEST_ID
+
+deploy:
+  stage: deploy
+  script: echo "Define your deployment script!"
+  environment: production
